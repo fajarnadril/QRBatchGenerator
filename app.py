@@ -7,6 +7,12 @@ import shutil
 
 # Streamlit app
 st.title("QR Code Generator from Excel")
+
+st.markdown("""
+    Untuk memulai, Anda bisa mengunduh template Excel dengan format yang benar dari link berikut:
+    [Download Template Excel](https://github.com/fajarnadril/QRBatchGenerator/blob/main/template.xlsx)
+""")
+
 st.write("Upload an Excel file containing URLs and names, and the app will generate QR codes.")
 
 # Upload Excel file
