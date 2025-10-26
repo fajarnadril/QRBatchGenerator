@@ -3,232 +3,124 @@ import pandas as pd
 import qrcode
 import os
 import shutil
-import zipfile
 from PIL import Image, ImageDraw, ImageFont
-import io
-import base64
+import zipfile
 
-# Konfigurasi halaman
-st.set_page_config(
-  page_title="QR Code Generator",
-  page_icon="📱",
-  layout="wide"
-)
+# --- Konfigurasi Awal ---
+output_folder = 'qr_codes'
 
-# Fungsi untuk membuat font
-def get_font():
-  try:
-      font = ImageFont.truetype("arial.ttf", 30)
-  except IOError:
-      try:
-          font = ImageFont.truetype("LiberationSans-Regular.ttf", 30)
-      except IOError:
-          font = ImageFont.load_default()
-  return font
+# Coba beberapa font umum
+try:
+    # Font Arial ukuran 30
+    font = ImageFont.truetype("arial.ttf", 30) 
+except IOError:
+    try:
+        # Font umum di Linux
+        font = ImageFont.truetype("LiberationSans-Regular.ttf", 30) 
+    except IOError:
+        # Fallback ke font default
+        font = ImageFont.load_default() 
 
-# Fungsi untuk membuat QR code
-def create_qr_code(url, nama_file, font):
-  qr_size = 500
-  text_height_padding = 60
-  total_image_height = qr_size + text_height_padding
-  
-  # Buat objek QR Code
-  qr = qrcode.QRCode(
-      version=1,
-      error_correction=qrcode.constants.ERROR_CORRECT_H,
-      box_size=10,
-      border=4,
-  )
-  qr.add_data(url)
-  qr.make(fit=True)
+# Ukuran gambar QR Code
+qr_size = 500
+# Tinggi tambahan untuk teks di bawah QR Code
+text_height_padding = 60 
+# Total tinggi gambar dengan teks
+total_image_height = qr_size + text_height_padding 
 
-  # Buat gambar QR code dan resize
-  img_qr = qr.make_image(fill_color="black", back_color="white")
-  img_qr_resized = img_qr.resize((qr_size, qr_size), Image.Resampling.LANCZOS)
+# --- Streamlit UI ---
+st.title("QR Code Generator from Excel")
+st.write("Upload file Excel yang berisi nama file dan URL.")
 
-  # Buat kanvas putih baru dengan ruang untuk teks
-  final_img = Image.new('RGB', (qr_size, total_image_height), color='white')
-  final_img.paste(img_qr_resized, (0, 0))
-  
-  draw = ImageDraw.Draw(final_img)
+# File uploader untuk Excel
+uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
 
-  # Tambahkan teks di bawah QR Code
-  text_width = draw.textlength(nama_file, font=font)
-  x_text = (qr_size - text_width) / 2
-  y_text = qr_size + (text_height_padding - 30) / 2
+if uploaded_file:
+    # Baca file Excel
+    df = pd.read_excel(uploaded_file)
 
-  draw.text((x_text, y_text), nama_file, font=font, fill=(0, 0, 0))
-  
-  return final_img
+    if len(df.columns) < 2:
+        st.error("File Excel harus memiliki minimal 2 kolom (Nama File dan URL).")
+    else:
+        nama_kolom = df.columns[0]
+        url_kolom = df.columns[1]
+        
+        st.write(f"Kolom yang tersedia: {df.columns.tolist()}")
+        st.write(f"Nama file diambil dari kolom '{nama_kolom}' dan URL dari kolom '{url_kolom}'.")
 
-# Fungsi untuk membuat file ZIP
-def create_zip_file(images_dict):
-  zip_buffer = io.BytesIO()
-  with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-      for filename, image in images_dict.items():
-          img_buffer = io.BytesIO()
-          image.save(img_buffer, format='JPEG', quality=95)
-          zip_file.writestr(f"{filename}.jpg", img_buffer.getvalue())
-  zip_buffer.seek(0)
-  return zip_buffer.getvalue()
+        # Buat folder untuk menyimpan QR Code
+        if os.path.exists(output_folder):
+            shutil.rmtree(output_folder)
+        os.makedirs(output_folder)
 
-# Header aplikasi
-st.title("📱 QR Code Generator Excel")
-st.markdown("---")
+        # Proses pembuatan QR Code
+        success_count = 0
+        failed_count = 0
+        failed_urls = []
 
-# Sidebar untuk instruksi
-with st.sidebar:
-  st.header("📋 Instruksi Penggunaan")
-  st.markdown("""
-  1. **Upload file Excel** dengan format:
-     - Kolom 1: Nama file QR Code
-     - Kolom 2: URL yang akan di-encode
-  
-  2. **Klik tombol Generate** untuk membuat QR Code
-  
-  3. **Download hasil** dalam format ZIP
-  
-  **Format Excel yang didukung:**
-  - .xlsx
-  - .xls
-  """)
+        for index, row in df.iterrows():
+            nama_file = str(row[nama_kolom])
+            url = str(row[url_kolom]).strip()
 
-# Upload file
-uploaded_file = st.file_uploader(
-  "Upload file Excel Anda",
-  type=['xlsx', 'xls'],
-  help="File harus memiliki minimal 2 kolom: Nama File dan URL"
-)
+            # Bersihkan nama file
+            nama_file_clean = "".join(c for c in nama_file if c.isalnum() or c in (' ', '-', '_')).strip()
+            nama_teks = nama_file_clean
 
-if uploaded_file is not None:
-  try:
-      # Baca file Excel
-      df = pd.read_excel(uploaded_file)
-      
-      st.success(f"✅ File berhasil dibaca! Ditemukan {len(df)} baris data.")
-      
-      # Tampilkan preview data
-      st.subheader("📊 Preview Data")
-      st.dataframe(df.head(10))
-      
-      # Validasi kolom
-      if len(df.columns) < 2:
-          st.error("❌ File Excel harus memiliki minimal 2 kolom (Nama File dan URL).")
-      else:
-          nama_kolom = df.columns[0]
-          url_kolom = df.columns[1]
-          
-          st.info(f"📝 Menggunakan kolom '{nama_kolom}' untuk nama file dan '{url_kolom}' untuk URL")
-          
-          # Tombol generate
-          if st.button("🚀 Generate QR Codes", type="primary"):
-              
-              # Progress bar
-              progress_bar = st.progress(0)
-              status_text = st.empty()
-              
-              # Container untuk hasil
-              results_container = st.container()
-              
-              font = get_font()
-              images_dict = {}
-              success_count = 0
-              failed_count = 0
-              failed_urls = []
-              
-              # Proses setiap baris
-              for index, row in df.iterrows():
-                  progress = (index + 1) / len(df)
-                  progress_bar.progress(progress)
-                  status_text.text(f"Memproses {index + 1}/{len(df)}: {row[nama_kolom]}")
-                  
-                  nama_file = str(row[nama_kolom])
-                  url = str(row[url_kolom]).strip()
-                  
-                  # Bersihkan nama file
-                  nama_file_clean = "".join(c for c in nama_file if c.isalnum() or c in (' ', '-', '_')).strip()
-                  
-                  # Skip jika URL kosong
-                  if pd.isna(url) or url == 'nan' or url.strip() == '':
-                      failed_count += 1
-                      failed_urls.append((nama_file_clean, "URL kosong", "URL tidak valid"))
-                      continue
-                  
-                  try:
-                      # Buat QR code
-                      qr_image = create_qr_code(url, nama_file_clean, font)
-                      
-                      # Handle duplikasi nama file
-                      original_name = nama_file_clean
-                      counter = 1
-                      while nama_file_clean in images_dict:
-                          nama_file_clean = f"{original_name}_{counter}"
-                          counter += 1
-                      
-                      images_dict[nama_file_clean] = qr_image
-                      success_count += 1
-                      
-                  except Exception as e:
-                      failed_count += 1
-                      failed_urls.append((nama_file_clean, url, str(e)))
-              
-              # Selesai processing
-              progress_bar.progress(1.0)
-              status_text.text("✅ Selesai!")
-              
-              # Tampilkan hasil
-              with results_container:
-                  st.markdown("---")
-                  st.subheader("📊 Hasil Pembuatan QR Code")
-                  
-                  col1, col2, col3 = st.columns(3)
-                  with col1:
-                      st.metric("Total Data", len(df))
-                  with col2:
-                      st.metric("Berhasil", success_count)
-                  with col3:
-                      st.metric("Gagal", failed_count)
-                  
-                  # Tampilkan error jika ada
-                  if failed_urls:
-                      st.warning("⚠️ Beberapa QR Code gagal dibuat:")
-                      error_df = pd.DataFrame(failed_urls, columns=['Nama File', 'URL', 'Error'])
-                      st.dataframe(error_df)
-                  
-                  # Download ZIP jika ada yang berhasil
-                  if success_count > 0:
-                      st.success(f"🎉 Berhasil membuat {success_count} QR Code!")
-                      
-                      # Buat file ZIP
-                      zip_data = create_zip_file(images_dict)
-                      
-                      # Tombol download
-                      st.download_button(
-                          label="📥 Download QR Codes (ZIP)",
-                          data=zip_data,
-                          file_name="qr_codes_hasil.zip",
-                          mime="application/zip"
-                      )
-                      
-                      # Preview beberapa QR code
-                      st.subheader("👀 Preview QR Codes")
-                      preview_count = min(6, len(images_dict))
-                      cols = st.columns(3)
-                      
-                      for i, (filename, image) in enumerate(list(images_dict.items())[:preview_count]):
-                          with cols[i % 3]:
-                              st.image(image, caption=filename, width=200)
-                  
-                  else:
-                      st.error("❌ Tidak ada QR Code yang berhasil dibuat.")
-                      
-  except Exception as e:
-      st.error(f"❌ Error membaca file: {str(e)}")
-      st.info("Pastikan file Excel Anda dalam format yang benar dan tidak corrupt.")
+            # Skip jika URL kosong atau NaN
+            if pd.isna(url) or url == 'nan' or url.strip() == '':
+                failed_count += 1
+                continue
 
-else:
-  st.info("👆 Silakan upload file Excel untuk memulai.")
+            try:
+                qr = qrcode.QRCode(
+                    version=1,
+                    error_correction=qrcode.constants.ERROR_CORRECT_H,
+                    box_size=10,
+                    border=4,
+                )
+                qr.add_data(url)
+                qr.make(fit=True)
 
-# Footer
-st.markdown("---")
-st.markdown("*Dibuat dengan ❤️ menggunakan Streamlit*")
+                img_qr = qr.make_image(fill_color="black", back_color="white")
+                img_qr_resized = img_qr.resize((qr_size, qr_size), Image.Resampling.LANCZOS)
+
+                final_img = Image.new('RGB', (qr_size, total_image_height), color='white')
+                final_img.paste(img_qr_resized, (0, 0))
+
+                draw = ImageDraw.Draw(final_img)
+                text_width = draw.textlength(nama_teks, font=font)
+                x_text = (qr_size - text_width) / 2
+                y_text = qr_size + (text_height_padding - 30) / 2 
+                draw.text((x_text, y_text), nama_teks, font=font, fill=(0, 0, 0))
+
+                output_path = os.path.join(output_folder, f"{nama_file_clean}.jpg")
+                counter = 1
+                while os.path.exists(output_path):
+                    output_path = os.path.join(output_folder, f"{nama_file_clean}_{counter}.jpg")
+                    counter += 1
+
+                final_img.save(output_path, 'JPEG', quality=95)
+                success_count += 1
+
+            except Exception as e:
+                failed_count += 1
+                failed_urls.append((nama_file_clean, url, str(e)))
+
+        # Menampilkan ringkasan
+        st.write(f"Total data: {len(df)}")
+        st.write(f"Berhasil: {success_count}")
+        st.write(f"Gagal: {failed_count}")
+
+        if failed_urls:
+            st.write("📋 Daftar URL yang gagal:")
+            for nama, url, error in failed_urls:
+                st.write(f"- {nama}: {error}")
+
+        # Membuat ZIP dan memberikan link untuk di-download
+        if success_count > 0:
+            zip_filename = "qr_codes_hasil.zip"
+            shutil.make_archive(zip_filename.replace(".zip", ""), 'zip', output_folder)
+            with open(f"{zip_filename}", "rb") as f:
+                st.download_button("Download ZIP", f, file_name=zip_filename)
+        else:
+            st.warning("Tidak ada QR Code yang berhasil dibuat.")
