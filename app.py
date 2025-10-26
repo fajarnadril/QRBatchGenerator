@@ -30,6 +30,10 @@ total_image_height = qr_size + text_height_padding
 
 # --- Streamlit UI ---
 st.title("QR Code Generator from Excel")
+st.markdown("""
+    Untuk memulai, Anda bisa mengunduh template Excel dengan format yang benar dari link berikut:
+    [Download Template Excel](https://github.com/fajarnadril/QRBatchGenerator/blob/main/template.xlsx)
+""")
 st.write("Upload file Excel yang berisi nama file dan URL.")
 
 # File uploader untuk Excel
